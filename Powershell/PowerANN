@@ -1,6 +1,7 @@
 class Layer {
     [int] $size = 0
     [int] $activation
+    $x = @()
     $z = @()
     $bias = @()
     $output = @()
@@ -9,6 +10,7 @@ class Layer {
     Layer($size, $activation) {
         $this.size = $size
         $this.activation = $activation 
+        $this.x = @(0) * $size
         $this.z = @(0) * $size
         $this.bias = @(0) * $size
         $this.output = @(0) * $size
@@ -44,8 +46,12 @@ class PowerANN {
     [double] dotProduct($v1, $v2) {
         $dot = 0
 
-        for ($i = 0; $i -lt $v1.Count; $i++) {
-            $dot += [double]$v1[$i] * [double]$v2[$i]
+        if (($v1.Count -eq $v2.Count) -or ($v1[0].Count -eq $v2.Count) -or ($v1.Count -eq $v2[0].Count)) {
+            for ($i = 0; $i -lt $v1.Count; $i++) {
+                $dot += [double]$v1[$i] * [double]$v2[$i]
+            }
+        } else {
+            Write-Host "Column and row size aren't equal!" 
         }
         return $dot
     }
@@ -70,6 +76,19 @@ class PowerANN {
             $sum += $v[$i]
         }
         return $sum
+    }
+
+    [Object] transpose($v) {
+        $row = @(0) * $v.Count
+        $t = @(0) * $v[0].Count
+        for ($i = 0; $i -lt $t.Count; $i++) {
+            for ($j = 0; $j -lt $v.Count; $j++) {
+                # Add columns to row
+                $row[$j] = $v[$j][$i]
+            }
+            $t[$i] = @($row)
+        }
+        return $t
     }
 
     [Object] updateWeight($v, $s) {
@@ -132,15 +151,12 @@ class PowerANN {
 
     [Object] forwardPropagation($input) {
         for ($i = 0; $i -lt $this.layers.Count; $i++) {
+            $this.layers[$i].x = $input
             for ($j = 0; $j -lt $this.layers[$i].weights.Count; $j++) {
-                if ($this.layers[$i].activation -eq 2) {
-                    # Get input vector for softmax
-                    $this.layers[$i].z[$j] = $this.dotProduct($this.layers[$i].weights[$j], $input) + $this.layers[$i].bias[$j]
-                } else {
-                    # Multiply weights by input
-                    $this.layers[$i].z[$j] = $this.dotProduct($this.layers[$i].weights[$j], $input) + $this.layers[$i].bias[$j]
-
-                    # Put through activation function
+                # Linear activation
+                $this.layers[$i].z[$j] = $this.dotProduct($this.layers[$i].weights[$j], $input) + $this.layers[$i].bias[$j]
+                if ($this.layers[$i].activation -ne 2) {
+                    # Non-linear activation
                     Switch ($this.layers[$i].activation) {
                         0 { $this.layers[$i].output[$j] = $this.logit([Math]::Min(0.9999, $this.layers[$i].z[$j])) }
                         1 { $this.layers[$i].output[$j] = $this.relu($this.layers[$i].z[$j]) }
@@ -150,120 +166,141 @@ class PowerANN {
                 #Write-Host "output:" $this.layers[$i].output[$j]
             }
             if ($this.layers[$i].activation -eq 2) {
-                # Put through softmax function
+                # Softmax activation
                 $this.layers[$i].output = $this.softmax($this.layers[$i].z)
             }
 
-            #Write-Host "output:" $this.layers[$i].output
             $input = $this.layers[$i].output
         }
         return $this.layers[$this.layers.Count-1].output
     }
 
-    backwardPropagation($y, $num, $learningRate) {
+    [double] softmaxLoss($y, $num) {
         $e = 0
-        $s = @(0) * $this.layers[$this.layers.Count-1].weights.Count
-        $dh = @(0) * $this.layers[$this.layers.Count-1].weights.Count
-        $db = @(0) * $this.layers.Count
-        $dw = @(0) * $this.layers.Count
-        
-        # Calculating the error
-        #$e = $this.sumSquaredError($y[$num], $this.layers[$this.layers.Count - 1].output) 
-
-        # Calculate softmax loss
         if ($this.layers[$this.layers.Count - 1].activation -eq 2) {
             for ($i = 0; $i -lt $this.layers[$this.layers.Count-1].output.Count; $i++) { 
                 $e -= ([Math]::Log($this.layers[$this.layers.Count-1].output[$i]) * $y[$num][$i])
             }
         }
+        return $e
+    }
 
-        $this.printNodes()
-        Write-Host "e66:  loss:" $e "  out:" $this.layers[$this.layers.Count-1].output "   real:" $y[$num]
+    updateLayer($index, $dw, $learningRate) {
+        for ($i = 0; $i -lt $this.layers[$index].weights.Count; $i++) {
+            for ($j = 0; $j -lt $this.layers[$index].weights[$i].Count; $j++) {         
+                $this.layers[$index].weights[$i][$j] -= $dw[$i][$j] * $learningRate
+            }
+        }
+    }
+
+    [bool] backwardPropagation($y, $num, $learningRate) {
+        $s = @(0) * $this.layers[$this.layers.Count-1].weights.Count
+        $dh = @(0) * $this.layers[$this.layers.Count-1].weights.Count
+        $db = @(0) * $this.layers.Count
+        $dw = @(0) * $this.layers.Count
+        $db = 0 
         
-
-        # Calculate error signal
+        # Calculate error signal (softmax gradient)
         for ($i = 0; $i -lt $this.layers[$this.layers.Count-1].weights.Count; $i++) {
             if ($this.layers[$this.layers.Count - 1].activation -eq 2) {
                 $s[$i] = $this.layers[$this.layers.Count-1].output[$i] - $y[$num][$i]
             } else {
                 $s[$i] = -($y[$num][$i] - $this.layers[$this.layers.Count-1].output[$i]) * $this.sigmoidDerivative($this.layers[$this.layers.Count-1].output[$i])
             }
-
-            # Calculate partial derivative of Error w.r.t. input
-            $dh[$i] = $this.sum($this.layers[$this.layers.Count-1].weights[$i]) * $s[$i]
-            #Write-Host "w:" $this.layers[$this.layers.Count-1].weights[$i] " dh:" $dh[$i]
-                    
-            # Calculate output weight derivative
-            for ($j = 0; $j -lt $this.layers[$this.layers.Count-1].weights[$i].Count; $j++) {
-                $dw = $learningRate * $s[$i] * $this.layers[$this.layers.Count-2].output[$j]
-                
-                #Write-Host "                                                                                                              node:" $i " d:" $d
-                $this.layers[$this.layers.Count-1].weights[$i][$j] -= $dw * $learningRate
-            }
-
-            #Write-Host "                                                                                                              y:" $y[$num][$i] " out:" $this.layers[$this.layers.Count-1].output[$i] " dw: " $dw
         }
 
-        $outer = $this.outer($s, $this.layers[$this.layers.Count-2].output)
-        $outGrad = $this.dotProduct($this.layers[$this.layers.Count-1].weights, $s) 
-        Write-Host "s:" $s " output:" $this.layers[$this.layers.Count-2].output
-        Write-Host " "
-        Write-Host "outer:" $outer
-        Write-Host "outGrad:" $outGrad
+        # Calculate weight derivative and output gradient
+        $db = @($s)
+        $dw = $this.outer($s, $this.layers[$this.layers.Count-1].x)
+        $wT = $this.transpose($this.layers[$this.layers.Count-1].weights)
 
+        $this.updateLayer($this.layers.Count-1, $dw, $learningRate)
+
+        $outGrad = @(0) * $wT.Count
+        for ($i = 0; $i -lt $wT.Count; $i++) {
+            $outGrad[$i] = $this.dotProduct($wT[$i], $s) 
+        }
+        
         # Hidden layer Calculate weight gradients
+        $errorGrad = @(0) * ($this.layers.Count-1)       
         for ($i = $this.layers.Count-2; $i -ge 0; $i--) {
-
-            # Store this layers weights for dh
-            $tempDH = @(0) * $this.layers[$i].weights.Count
-            
-            $dh = $this.sum($dh)
-
-            for ($j = 0; $j -lt $this.layers[$i].weights.Count; $j++) {
-                $weights = $this.sum($this.layers[$i].weights[$j])
-
-                # Update each weight for each error
-                for ($k = 0; $k -lt $this.layers[$i].weights[$j].Count; $k++) {
-                    #for ($l = 0; $l -lt $s.Count; $l++) {
-                        $tempDH = $weights * $dh
-
-                        # $s[$l] * $this.layers[$i].weights[$j][$k]
-                        $dw = $learningRate * $dh * $this.sigmoidDerivative($this.layers[$i].z[$j])
-                    
-                        Write-Host "hidden  " $i $j "  dw:" $dw
-                        $this.layers[$i].weights[$j][$k] -= $dw
-                    #}
-                }
-
-                # Update bias
-                #$this.layers[$i].bias[$j] += $this.sum($s)
+            # Calculate node derivatives
+            $d = @(0) * $this.layers[$i].output.Count
+            for ($j = 0; $j -lt $this.layers[$i].output.Count; $j++) {
+                $d[$j] = $this.sigmoidDerivative($this.layers[$i].output[$j])
             }
-            $dh = $tempDH
+
+            # Calculate error gradient w.r.t weight
+            $errorGrad[$i] = @(0) * $outGrad.Count
+            for ($j = 0; $j -lt $outGrad.Count; $j++) {
+                $errorGrad[$i][$j] = $d[$j] * $outGrad[$j]
+            }
+            
+            $dw = $this.outer($errorGrad[$i], $this.layers[$i].x)
+            $WT = $this.transpose($this.layers[$i].weights)
+            $outGrad = @(0) * $wT.Count
+            
+            for ($j = 0; $j -lt $wT.Count; $j++) {
+                $outGrad[$j] = $this.dotProduct($wT[$j], $errorGrad[$i]) 
+            }
+
+            $this.updateLayer($i, $dw, $learningRate)
         }
+        return 0
     }
 
     test($data, $y) {
+        $correct = 0
+
         for ($i = 0; $i -lt $data.Count; $i++) {
-            Write-Host "input:" $data[$i] " guess:" $this.forwardPropagation($data[$i]) " real:" $y[$i]
+            $g = $this.forwardPropagation($data[$i])
+
+            $index = 0
+            $max = $g[0]
+            for ($j = 0; $j -lt $g.Count; $j++) {
+                if ($g[$j] -gt $max) {
+                    $max = $g[$j]
+                    $index = $j
+                }
+            }
+            $class = $index + 1
+            $real = 0
+
+            if ($y[$i][0] -eq 1) {
+                $real = 1
+            } elseif ($y[$i][1] -eq 1) {
+                $real = 2
+            } else {
+                $real = 3
+            }
+
+            if ($class -eq $real) {
+                $correct++
+            }
+
+            Write-Host "guess class " $class "  real:" $real
+            Write-Host "probabilities:" $this.forwardPropagation($data[$i]) "  real:" $y[$i]
+            Write-Host "Accuracy: " + ($correct/($i+1))
+            Write-Host " "
         }
     }
     
-    train($data, $y, $loss, $epochs, $learningRate) {
+    train($x, $y, $signal, $epochs, $learningRate) {
         # Initialize weights
-        Write-Host "Vector size" $data[0].Count
-        $this.initializeWeights($data[0].Count)
-        $this.printNodes()
+        $this.initializeWeights($x[0].Count)
 
         for ($k = 0; $k -lt $epochs; $k++) {
             Write-Host $k
-            for ($count = 0; $count -lt $data.Count; $count++) {
-                $input = $data[$count]
+            for ($count = 0; $count -lt $x.Count; $count++) {
+                $input = $x[$count]
 
-                # Forward propagation
                 $this.forwardPropagation($input)
-
-                # Backpropagation
-                $this.backwardPropagation($y, $count, $learningRate) 
+                $this.backwardPropagation($y, $count, $learningRate)
+                
+                $loss = $this.softmaxLoss($y, $count)
+                if ($loss -lt $signal) {
+                    return
+                }
             }
         }
     }
@@ -278,53 +315,3 @@ class PowerANN {
         }
     }
 }
-<#
-Import-Module $env:HOMEPATH\documents\Code\Powershell\ML\MLHelper.ps1
-
-$n = [PowerANN]::new()
-$ml = [MLHelper]::new()
-
-$data = ,@(1)
-$data += ,@(2)
-$data += ,@(4)
-$data += ,@(6)
-$data += ,@(8)
-$data += ,@(1)
-$data += ,@(3)
-$data += ,@(30)
-
-$y = @(0, 1, 1, 1, 1, 0, 0, 1)
-
-$data = $ml.normalizeData($data)
-$y = $ml.normalizeData($y)
-
-Write-Host "y:" $y  " x:" $data
-
-# Hidden Layers
-$n.addLayer(3, 0)
-$n.addLayer(6, 0)
-$n.addLayer(3, 0)
-
-# Output layer
-$n.addLayer(1, 0)
-
-$n.train($data, $y, 0, 100, 0.05)
-#$n.printNodes()
-
-#Write-Host "Dot: " $n.dotProduct($data[0], $data[1])
-#Write-Host "Sigmoid: " $n.sigmoid(5)
-
-Write-Host "1, 2, 3" $n.forwardPropagation($data[0])
-
-Write-Host "4, 8, 3" $n.forwardPropagation($data[1])
-
-Write-Host "4, 1, 3" $n.forwardPropagation($data[4])
-
-Write-Host "30, 25, 6" $n.forwardPropagation($data[7])
-#>
-
-$t = 3.0, 1.0, 0.2
-
-$n = [PowerANN]::new()
-Write-Host $n.outer((1, 2, 3), (4, 5, 6))
-Write-Host $n.sigmoid(5)
