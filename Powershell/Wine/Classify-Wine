@@ -57,13 +57,11 @@ $testx = $mlx.normalizeData($testx)
 
 # Sigmoid hidden Layers
 $n.addLayer(6, 3)
-$n.addLayer(6, 3)
-$n.addLayer(6, 3)
 
 # Softmax output layer
 $n.addLayer(3, 2)
 
-$n.train($trainx, $trainy, 0.00001, 10000, 0.05)
+$n.train($trainx, $trainy, 0.00001, 1000, 0.05)
 $n.test($testx, $testy)
 
 # Store model
