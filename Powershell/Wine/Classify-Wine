@@ -9,6 +9,7 @@ $n = [PowerANN]::new()
 $data = Get-Content "$env:HOMEPATH\documents\Code\Powershell\ML\Wine\data.csv"
 
 $num = [Math]::Round($data.Count * 0.7)
+Write-Host $data.Count $num ($data.Count-$num)
 $trainx = @(0) * $num
 $trainy = @(0) * $num
 $testx = @(0) * ($data.Count - $num)
@@ -23,7 +24,7 @@ for ($i = 0; $i -lt $num; $i++) {
         $i--
         continue
     }
-    
+
     $data[$k] = $data[$k].Split(',')
     $trainx[$i] = $data[$k][1..$data.Count]
 
@@ -55,12 +56,14 @@ $trainx = $mlx.normalizeData($trainx)
 $testx = $mlx.normalizeData($testx)
 
 # Hidden Layers
-$n.addLayer(3, 3)
-$n.addLayer(3, 3)
+$n.addLayer(6, 3)
+$n.addLayer(6, 3)
+$n.addLayer(6, 3)
+
 # Output layer
 $n.addLayer(3, 2)
 
-$n.train($trainx, $trainy, 0, 500, 0.05)
+$n.train($trainx, $trainy, 0.9, 10000, 0.05)
 $n.test($testx, $testy)
 
 # Store model
