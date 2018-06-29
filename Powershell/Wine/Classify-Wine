@@ -55,12 +55,12 @@ for ($i = 0; $i -lt $data.Count; $i++) {
 $trainx = $mlx.normalizeData($trainx)
 $testx = $mlx.normalizeData($testx)
 
-# Hidden Layers
+# Sigmoid hidden Layers
 $n.addLayer(6, 3)
 $n.addLayer(6, 3)
 $n.addLayer(6, 3)
 
-# Output layer
+# Softmax output layer
 $n.addLayer(3, 2)
 
 $n.train($trainx, $trainy, 0.9, 10000, 0.05)
