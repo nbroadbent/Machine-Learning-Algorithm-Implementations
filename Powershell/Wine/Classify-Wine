@@ -63,7 +63,7 @@ $n.addLayer(6, 3)
 # Softmax output layer
 $n.addLayer(3, 2)
 
-$n.train($trainx, $trainy, 0.9, 10000, 0.05)
+$n.train($trainx, $trainy, 0.00001, 10000, 0.05)
 $n.test($testx, $testy)
 
 # Store model
