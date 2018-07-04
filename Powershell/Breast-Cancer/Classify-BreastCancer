@@ -6,6 +6,7 @@ $mly = [MLHelper]::new()
 $n = [PowerANN]::new()
 
 # Preprocess Data
+Write-Host "Preprocessing data"
 $data = Get-Content "$env:HOMEPATH\documents\Code\Powershell\ML\Breast-Cancer\data.csv"
 
 $num = [Math]::Round($data.Count * 0.7)
@@ -20,9 +21,12 @@ $map = @(0) * $data.Count
 for ($i = 0; $i -lt $num; $i++) {
     # Choose a unique random vector to add to training set
     $k = Get-Random -Minimum 0 -Maximum $data.Count
-    if ($map[$k] -eq 1) {
-        $i--
-        continue
+    while ($map[$k] -eq 1) {
+        $k++
+        
+        if ($k -ge $data.Count) {
+            $k = 0
+        }
     }
 
     $data[$k] = $data[$k].Split(',')
@@ -50,25 +54,22 @@ for ($i = 0; $i -lt $data.Count; $i++) {
     }
 }
 
-$con = $true
-
-
+Write-Host "Normalizing data"
 $trainx = $mlx.normalizeData($trainx)
 $testx = $mlx.normalizeData($testx)
 
-
 # Sigmoid hidden Layers
-$n.addLayer(6, 3)
-$n.addLayer(6, 3)
 $n.addLayer(6, 3)
 
 # Softmax output layer
 $n.addLayer(2, 2)
 
+Write-Host "Training"
+$con = $true
 while ($con) {
-    $n.train($trainx, $trainy, 0.00000001, 1000, 0.05)
+    $n.train($trainx, $trainy, 0.00000001, 100, 0.01)
     $n.test($testx, $testy)
-    $con = (Read-Host 'Continue?') -eq "y"
+    $con = (Read-Host 'Continue Training?') -eq "y"
 }
 
 # Store model
